@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+### Project Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Data Sources
+The training and test data for this project are available here in the following URL:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The original source of the data is: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+### Objectives
+The goal of the project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+1. The project submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+
+2. We should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details. 
+
+### Reproducibility
+In order to reproduce the same results, you need a certain packages, as well as setting a pseudo random seed equal to the one I used.
+
+```{r,echo=TRUE}
+library(caret)
+library(lattice)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(kernlab)
+library(randomForest)
+```
+
+### Data Import into R
+The training data set can be downloaded from the following URL:
+```{r}
+trainURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+```
+
+The test data set can be downloaded from the following URL:
+```{r}
+testURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+
+#### Load and Clean data
+
+```{r}
+trainingData <- read.csv(url(trainURL), na.strings=c("NA","#DIV/0!",""))
+testingData <- read.csv(url(testURL), na.strings=c("NA","#DIV/0!",""))
+dim(trainingData)
+#delete attributes irrelevant for our analysis
+trainingData<-trainingData[,-c(1:7)]
+testingData<-testingData[,-c(1:7)]
+
+NAcheck <- function(x, freqThresh){
+  xlength <- nrow(x)
+  na_count_by_col <- colSums( is.na(x) )
+  complete_col <- as.vector( which(na_count_by_col == 0) )
+  empty_col <- as.vector( which(na_count_by_col == xlength) )
+  incomplete_col <- as.vector( which(na_count_by_col>0 & na_count_by_col<xlength) )
+  incomplete_col_above_T <- as.vector( which(na_count_by_col>freqThresh & na_count_by_col<xlength)  )
+  
+  ret <- list( "complete" = complete_col, "empty" = empty_col, 
+               "incomplete" = incomplete_col, "aboveTh" = incomplete_col_above_T )
+  
+  return(ret)
+}
+
+#remove attributes with more than 30% NA values
+NAstatTraining <- NAcheck(x = trainingData, freqThresh = nrow(trainingData)*0.30)
+trainingData_df <- trainingData[, -c(NAstatTraining$aboveTh, NAstatTraining$empty)]
+
+NAstatTtesting <- NAcheck(x = testingData, freqThresh = nrow(testingData)*0.30)
+testingData_df <- testingData[, -c(NAstatTtesting$aboveTh, NAstatTtesting$empty)]
+```
+After cleaning the data, the total number of attributes are:
+in Training data:
+```{r}
+dim(trainingData_df)
+```
+in Testing data:
+```{r}
+dim(trainingData_df)
+```
+
+### Partitioning training data for cross validation
+Partioning Training data set into two data sets, 75% for training and 25% for testing:
+```{r}
+inTrain <- createDataPartition(y=trainingData_df$classe, p=0.75, list=FALSE)
+trainData<-trainingData_df[inTrain,]
+testData<-trainingData_df[-inTrain,]
+```
+#### First Prediction Model : Descision Tree
+We first try with decision tree model and check the accuracy.
+```{r}
+modelDecisionTree <- rpart(classe ~.,data=trainData, method="class")
+predDecisionTree <- predict(modelDecisionTree, testData, type="class")
+confusionMatrix(predDecisionTree, testData$classe)
+```
+```{r}
+rpart.plot(modelDecisionTree, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+```
+
+#### Second Prediction Model : Random Forest
+Again for the same data set, we try with Random Forest model and check the accuracy and compare with Decision tree model.
+```{r}
+modelrf <- randomForest(classe~.,data=trainData, methods="class", ntree = 50)
+predrf <- predict(modelrf, testData, type = "class")
+
+# Test results on testing data set:
+confusionMatrix(predrf, testData$classe)
+```
+
+#### Features ranking
+```{r}
+varImpPlot(modelrf, main = "Random Forest",type=2)
+```
+
+### Expected Out-of sample error
+The Out-of-sample error is the error rate I get on a new data set. Lower Out-of-sample error means there is less likelihood of avoiding overfitting.I expect the Out-of-sample error to be small because of the small size of the dataset(25%). The out-of-sample error on Random Forest prediction is 0.06% - an extremely low error rate.
+
+### Conclusion
+The random forest model provides an better accuracy and, accordingly, the predictions for the test data set were tested and all the test cases are correct.
+
